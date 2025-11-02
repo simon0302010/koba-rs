@@ -5,3 +5,5 @@ edition = "2024"
 
 [dependencies]
 image = "0.25.*"
+log = "0.4.*"
+simple_logger = "5.1.*"
