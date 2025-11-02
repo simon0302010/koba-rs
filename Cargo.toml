@@ -1,5 +1,6 @@
 [package]
 name = "koba-rs"
+description = "Rust rewrite of https://github.com/simon0302010/koba"
 version = "0.1.0"
 edition = "2024"
 
@@ -7,3 +8,4 @@ edition = "2024"
 image = "0.25.*"
 log = "0.4.*"
 simple_logger = "5.1.*"
+clap = { version = "4.5.*", features = ["derive"] }
