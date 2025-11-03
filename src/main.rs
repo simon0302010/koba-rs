@@ -5,6 +5,13 @@ use std::time::Instant;
 use clap::Parser;
 use image::{self, GenericImageView};
 use log::*;
+use terminal_size::Width;
+
+mod core;
+use core::*;
+
+const CHAR_ASPECT: f32 = 2.0;
+const SCALE: f64 = 1.0;
 
 fn main() {
     let args = Args::parse();
@@ -42,7 +49,28 @@ fn main() {
     );
 
     info!("Image dimensions: {:?}", img.dimensions());
-    info!("Char Range: {}-{}", *char_range.start(), *char_range.end())
+    let (img_width, img_height) = img.dimensions();
+    info!("Char Range: {}-{}", *char_range.start(), *char_range.end());
+
+    let terminal_width = match terminal_size::terminal_size() {
+        Some((Width(w), _)) => w,
+        None => {
+            error!("Error getting terminal size.");
+            std::process::exit(1);
+        }
+    };
+
+    info!("The terminal is {} chars wide", terminal_width);
+
+    let (block_widths, block_heights, chars_width) = blocks::calculate_block_sizes(
+        img_width as u16,
+        img_height as u16,
+        SCALE,
+        terminal_width,
+        CHAR_ASPECT,
+    );
+
+    println!("{:?}\n{:?}", block_widths, block_heights);
 }
 
 #[derive(Parser, Debug)]
