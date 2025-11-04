@@ -10,6 +10,8 @@ use terminal_size::Width;
 mod core;
 use core::*;
 
+use crate::core::blocks::create_blocks;
+
 const CHAR_ASPECT: f32 = 2.0;
 const SCALE: f64 = 1.0;
 
@@ -70,7 +72,13 @@ fn main() {
         CHAR_ASPECT,
     );
 
-    println!("{:?}\n{:?}", block_widths, block_heights);
+    let create_blocks_start = Instant::now();
+    let blocks = create_blocks(&block_widths, &block_heights, &img);
+    info!(
+        "Created {} blocks in {}ms.",
+        blocks.len(),
+        create_blocks_start.elapsed().as_millis()
+    );
 }
 
 #[derive(Parser, Debug)]
