@@ -1,4 +1,3 @@
-use std::iter::Sum;
 use std::{char, ops::RangeInclusive};
 use std::path::Path;
 use std::time::Instant;

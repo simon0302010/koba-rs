@@ -1,6 +1,6 @@
 use std::cmp;
 
-use image::{DynamicImage, GenericImageView, ImageBuffer, Rgba};
+use image::{DynamicImage, GenericImageView};
 
 pub fn calculate_block_sizes(
     width: u16,
@@ -23,8 +23,8 @@ pub fn calculate_block_sizes(
     );
 
     let chars_width: u16 = ((terminal_width as f64 * scale) as u16)
-        .min(terminal_width as u16)
-        .min(max_chars_width as u16)
+        .min(terminal_width)
+        .min(max_chars_width)
         .max(1);
 
     let chars_height: u16 = (((height as u32 * chars_width as u32) as f64 / width as f64)
@@ -32,7 +32,7 @@ pub fn calculate_block_sizes(
         .ceil() as u16;
 
     let mut block_widths = vec![width / chars_width; chars_width as usize];
-    for i in 0..(width % chars_width as u16) {
+    for i in 0..(width % chars_width) {
         block_widths[i as usize] += 1;
     }
 
