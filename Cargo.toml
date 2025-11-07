@@ -5,8 +5,9 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-image = "0.25.*"
-log = "0.4.*"
-simple_logger = "5.1.*"
-clap = { version = "4.5.*", features = ["derive"] }
-terminal_size = "0.4.*"
+image = "0.25"
+log = "0.4"
+simple_logger = "5.1"
+clap = { version = "4.5", features = ["derive"] }
+terminal_size = "0.4"
+fontdue = "0.9"

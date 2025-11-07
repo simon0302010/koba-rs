@@ -1,4 +1,5 @@
-use std::ops::RangeInclusive;
+use std::iter::Sum;
+use std::{char, ops::RangeInclusive};
 use std::path::Path;
 use std::time::Instant;
 
@@ -14,6 +15,11 @@ use crate::core::blocks::create_blocks;
 
 const CHAR_ASPECT: f32 = 2.0;
 const SCALE: f64 = 1.0;
+
+struct CharInfo {
+    char: char,
+    brightness: u8
+}
 
 fn main() {
     let args = Args::parse();
@@ -50,6 +56,8 @@ fn main() {
         image_loading_start.elapsed().as_millis()
     );
 
+    let img = img.grayscale();
+
     info!("Image dimensions: {:?}", img.dimensions());
     let (img_width, img_height) = img.dimensions();
     info!("Char Range: {}-{}", *char_range.start(), *char_range.end());
@@ -72,6 +80,7 @@ fn main() {
         CHAR_ASPECT,
     );
 
+    // i spent a lot of time on a version that was only 100ms faster than the current one but scrapped it.
     let create_blocks_start = Instant::now();
     let blocks = create_blocks(&block_widths, &block_heights, &img);
     info!(
@@ -79,6 +88,33 @@ fn main() {
         blocks.len(),
         create_blocks_start.elapsed().as_millis()
     );
+
+    let font = include_bytes!("/usr/share/fonts/Adwaita/AdwaitaMono-Regular.ttf") as &[u8];
+    let font = fontdue::Font::from_bytes(font, fontdue::FontSettings::default()).unwrap();    
+
+    let mut char_infos: Vec<CharInfo> = Vec::new();
+    let char_render_start = Instant::now();
+    for character in char_range {
+        let charac = match std::char::from_u32(character) {
+            Some(c) => {
+                if !c.is_control() {
+                    c
+                } else {
+                    continue;
+                }
+            },
+            None => { continue; }
+        };
+
+        let (metrics, bitmap) = font.rasterize(charac, 17.0);
+        let bitmap = bitmap.iter().map(|f| *f as u64);
+        if bitmap.len() < 1 {
+            continue;
+        }
+        char_infos.push(CharInfo { char: charac, brightness: (bitmap.clone().sum::<u64>() / bitmap.len() as u64) as u8 });
+    }
+
+    info!("Rendered {} characters in {}ms.", char_infos.len(), char_render_start.elapsed().as_millis());
 }
 
 #[derive(Parser, Debug)]
@@ -94,7 +130,7 @@ struct Args {
     char_range: String,
 }
 
-fn parse_char_range(char_range: String) -> Result<RangeInclusive<i32>, String> {
+fn parse_char_range(char_range: String) -> Result<RangeInclusive<u32>, String> {
     if char_range.matches("-").count() != 1 {
         return Err(
             "Invalid char_range format. Please use \"start-end\" (e.g., \"32-126\").".to_string(),
@@ -104,8 +140,8 @@ fn parse_char_range(char_range: String) -> Result<RangeInclusive<i32>, String> {
     let split_range: Vec<&str> = char_range.split("-").map(|s| s.trim()).collect();
 
     // probably very inefficient in terms of code length
-    let range_start: i32 = match split_range.first() {
-        Some(s) => match s.parse::<i32>() {
+    let range_start: u32 = match split_range.first() {
+        Some(s) => match s.parse::<u32>() {
             Ok(start) => start,
             Err(_) => return Err("Invalid start of range.".to_string()),
         },
@@ -114,8 +150,8 @@ fn parse_char_range(char_range: String) -> Result<RangeInclusive<i32>, String> {
         }
     };
 
-    let range_end: i32 = match split_range.get(1) {
-        Some(s) => match s.parse::<i32>() {
+    let range_end: u32 = match split_range.get(1) {
+        Some(s) => match s.parse::<u32>() {
             Ok(end) => end,
             Err(_) => return Err("Invalid end of range.".to_string()),
         },
@@ -125,4 +161,10 @@ fn parse_char_range(char_range: String) -> Result<RangeInclusive<i32>, String> {
     };
 
     Ok(range_start..=range_end)
+}
+
+fn find_similar(target: u8, arr: Vec<u8>) -> Option<u8> {
+    arr.iter()
+        .copied()
+        .min_by_key(|&x| x.abs_diff(target))
 }

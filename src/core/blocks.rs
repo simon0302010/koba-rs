@@ -1,6 +1,6 @@
 use std::cmp;
 
-use image::{DynamicImage, GenericImageView};
+use image::{DynamicImage, GenericImageView, ImageBuffer, Rgba};
 
 pub fn calculate_block_sizes(
     width: u16,
@@ -49,7 +49,8 @@ pub fn create_blocks(
     block_heights: &Vec<u16>,
     img: &DynamicImage,
 ) -> Vec<Vec<u8>> {
-    let mut blocks: Vec<Vec<u8>> = Vec::with_capacity(block_widths.len() * block_heights.len());
+    let mut blocks: Vec<Vec<u8>> =
+        Vec::with_capacity(block_widths.len() * block_heights.len());
     let mut x: u16;
     let mut y: u16 = 0;
     for bh in block_heights {
