@@ -1,23 +1,23 @@
-use std::{char, ops::RangeInclusive};
 use std::path::Path;
 use std::time::Instant;
+use std::{char, ops::RangeInclusive};
 
 use clap::Parser;
-use image::{self, GenericImageView};
 use log::*;
 use terminal_size::Width;
 
 mod core;
 use core::*;
 
-use crate::core::blocks::create_blocks;
+use crate::core::blocks::create_blocks_luma;
 
 const CHAR_ASPECT: f32 = 2.0;
 const SCALE: f64 = 1.0;
 
+#[derive(Clone, Copy, Debug)]
 struct CharInfo {
     char: char,
-    brightness: u8
+    brightness: u8,
 }
 
 fn main() {
@@ -55,7 +55,12 @@ fn main() {
         image_loading_start.elapsed().as_millis()
     );
 
-    let img = img.grayscale();
+    let start_convert_luka = Instant::now();
+    let img = img.into_luma8();
+    info!(
+        "Converting image to grayscale took {}ms.",
+        start_convert_luka.elapsed().as_millis()
+    );
 
     info!("Image dimensions: {:?}", img.dimensions());
     let (img_width, img_height) = img.dimensions();
@@ -81,7 +86,7 @@ fn main() {
 
     // i spent a lot of time on a version that was only 100ms faster than the current one but scrapped it.
     let create_blocks_start = Instant::now();
-    let blocks = create_blocks(&block_widths, &block_heights, &img);
+    let blocks = create_blocks_luma(&block_widths, &block_heights, &img);
     info!(
         "Created {} blocks in {}ms.",
         blocks.len(),
@@ -89,7 +94,7 @@ fn main() {
     );
 
     let font = include_bytes!("/usr/share/fonts/Adwaita/AdwaitaMono-Regular.ttf") as &[u8];
-    let font = fontdue::Font::from_bytes(font, fontdue::FontSettings::default()).unwrap();    
+    let font = fontdue::Font::from_bytes(font, fontdue::FontSettings::default()).unwrap();
 
     let mut char_infos: Vec<CharInfo> = Vec::new();
     let char_render_start = Instant::now();
@@ -101,19 +106,51 @@ fn main() {
                 } else {
                     continue;
                 }
-            },
-            None => { continue; }
+            }
+            None => {
+                continue;
+            }
         };
 
-        let (metrics, bitmap) = font.rasterize(charac, 17.0);
+        let (_metrics, bitmap) = font.rasterize(charac, 17.0);
         let bitmap = bitmap.iter().map(|f| *f as u64);
         if bitmap.len() < 1 {
             continue;
         }
-        char_infos.push(CharInfo { char: charac, brightness: (bitmap.clone().sum::<u64>() / bitmap.len() as u64) as u8 });
+        char_infos.push(CharInfo {
+            char: charac,
+            brightness: (bitmap.clone().sum::<u64>() / bitmap.len() as u64) as u8,
+        });
     }
 
-    info!("Rendered {} characters in {}ms.", char_infos.len(), char_render_start.elapsed().as_millis());
+    info!(
+        "Rendered {} characters in {}µs.",
+        char_infos.len(),
+        char_render_start.elapsed().as_micros()
+    );
+
+    let start_process_blocks = Instant::now();
+    let mut final_str: String = String::new();
+    for block in &blocks {
+        let avg = if block.is_empty() {
+            0
+        } else {
+            (block.iter().map(|b| *b as u64).sum::<u64>() / block.len() as u64) as u8
+        };
+        if let Some(closest_char) = find_similar(avg, &char_infos) {
+            final_str += &closest_char.to_string();
+        } else {
+            final_str += " ";
+        }
+    }
+
+    info!(
+        "Processed {} blocks in {}ms.",
+        blocks.len(),
+        start_process_blocks.elapsed().as_millis()
+    );
+
+    println!("{}", final_str);
 }
 
 #[derive(Parser, Debug)]
@@ -162,8 +199,8 @@ fn parse_char_range(char_range: String) -> Result<RangeInclusive<u32>, String> {
     Ok(range_start..=range_end)
 }
 
-fn find_similar(target: u8, arr: Vec<u8>) -> Option<u8> {
+fn find_similar(target: u8, arr: &[CharInfo]) -> Option<char> {
     arr.iter()
-        .copied()
-        .min_by_key(|&x| x.abs_diff(target))
+        .min_by_key(|x| x.brightness.abs_diff(target))
+        .map(|x| x.char)
 }
