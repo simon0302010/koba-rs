@@ -12,7 +12,6 @@ use core::*;
 use crate::core::blocks::create_blocks_luma;
 
 const CHAR_ASPECT: f32 = 2.0;
-const SCALE: f64 = 1.0;
 
 #[derive(Clone, Copy, Debug)]
 struct CharInfo {
@@ -79,7 +78,7 @@ fn main() {
     let (block_widths, block_heights, chars_width) = blocks::calculate_block_sizes(
         img_width as u16,
         img_height as u16,
-        SCALE,
+        args.scale,
         terminal_width,
         CHAR_ASPECT,
     );
@@ -93,7 +92,7 @@ fn main() {
         create_blocks_start.elapsed().as_millis()
     );
 
-    let font = include_bytes!("/usr/share/fonts/Adwaita/AdwaitaMono-Regular.ttf") as &[u8];
+    let font = include_bytes!("../font/unifont.otf") as &[u8];
     let font = fontdue::Font::from_bytes(font, fontdue::FontSettings::default()).unwrap();
 
     let mut char_infos: Vec<CharInfo> = Vec::new();
@@ -150,7 +149,14 @@ fn main() {
         start_process_blocks.elapsed().as_millis()
     );
 
-    println!("{}", final_str);
+    let mut formatted = String::new();
+    for (i, c) in final_str.chars().enumerate() {
+        if i > 0 && i % chars_width as usize == 0 {
+            formatted.push('\n');
+        }
+        formatted.push(c);
+    }
+    println!("{}", formatted);
 }
 
 #[derive(Parser, Debug)]
@@ -159,11 +165,15 @@ struct Args {
     /// image path
     #[arg(required = true)]
     image_path: String,
-    /// Unicode character range to use for ASCII art, specified as "start-end" (e.g., "32-126").
-    /// Both start and end should be integer Unicode code points.
-    /// This determines which characters are used to represent image brightness.
-    #[arg(short, long)]
+    /// unicode char range as "start-end"
+    #[arg(short, long, default_value = "32-126")]
     char_range: String,
+    /// scale at which to display the image at in the command line
+    #[arg(short, long, default_value_t = 1.0)]
+    scale: f64,
+    /// prints debug messages
+    #[arg(long, default_value_t = false)]
+    debug: bool,
 }
 
 fn parse_char_range(char_range: String) -> Result<RangeInclusive<u32>, String> {
