@@ -44,7 +44,7 @@ pub fn calculate_block_sizes(
     (block_widths, block_heights, chars_width)
 }
 
-pub fn create_blocks(
+pub fn _create_blocks_color(
     block_widths: &Vec<u16>,
     block_heights: &Vec<u16>,
     img: &DynamicImage,

@@ -22,10 +22,18 @@ struct CharInfo {
 fn main() {
     let args = Args::parse();
 
-    match simple_logger::init() {
-        Ok(_) => debug!("Logger initialized."),
-        Err(e) => println!("WARNING: Failed to initialize logger: {}", e),
+    if args.debug {
+        match simple_logger::init_with_level(log::Level::Debug) {
+            Ok(_) => debug!("Logger initialized."),
+            Err(e) => println!("WARNING: Failed to initialize logger: {}", e),
+        }
+    } else {
+        match simple_logger::init_with_level(log::Level::Info) {
+            Ok(_) => debug!("Logger initialized."),
+            Err(e) => println!("WARNING: Failed to initialize logger: {}", e),
     }
+    }
+
 
     let char_range = match parse_char_range(args.char_range) {
         Ok(char_range) => char_range,
@@ -56,14 +64,14 @@ fn main() {
 
     let start_convert_luka = Instant::now();
     let img = img.into_luma8();
-    info!(
+    debug!(
         "Converting image to grayscale took {}ms.",
         start_convert_luka.elapsed().as_millis()
     );
 
-    info!("Image dimensions: {:?}", img.dimensions());
+    debug!("Image dimensions: {:?}", img.dimensions());
     let (img_width, img_height) = img.dimensions();
-    info!("Char Range: {}-{}", *char_range.start(), *char_range.end());
+    debug!("Char Range: {}-{}", *char_range.start(), *char_range.end());
 
     let terminal_width = match terminal_size::terminal_size() {
         Some((Width(w), _)) => w,
@@ -73,7 +81,7 @@ fn main() {
         }
     };
 
-    info!("The terminal is {} chars wide", terminal_width);
+    debug!("The terminal is {} chars wide", terminal_width);
 
     let (block_widths, block_heights, chars_width) = blocks::calculate_block_sizes(
         img_width as u16,
@@ -86,7 +94,7 @@ fn main() {
     // i spent a lot of time on a version that was only 100ms faster than the current one but scrapped it.
     let create_blocks_start = Instant::now();
     let blocks = create_blocks_luma(&block_widths, &block_heights, &img);
-    info!(
+    debug!(
         "Created {} blocks in {}ms.",
         blocks.len(),
         create_blocks_start.elapsed().as_millis()
@@ -122,7 +130,7 @@ fn main() {
         });
     }
 
-    info!(
+    debug!(
         "Rendered {} characters in {}µs.",
         char_infos.len(),
         char_render_start.elapsed().as_micros()
@@ -143,7 +151,7 @@ fn main() {
         }
     }
 
-    info!(
+    debug!(
         "Processed {} blocks in {}ms.",
         blocks.len(),
         start_process_blocks.elapsed().as_millis()
