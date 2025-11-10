@@ -1,3 +1,4 @@
+use std::iter::zip;
 use std::path::Path;
 use std::time::Instant;
 use std::{char, ops::RangeInclusive};
@@ -6,6 +7,7 @@ use clap::Parser;
 use image::ImageBuffer;
 use log::*;
 use terminal_size::Width;
+use colored::Colorize;
 
 mod core;
 use core::*;
@@ -177,14 +179,43 @@ fn main() {
         start_process_blocks.elapsed().as_millis()
     );
 
-    let mut formatted = String::new();
-    for (i, c) in final_str.chars().enumerate() {
-        if i > 0 && i % chars_width as usize == 0 {
-            formatted.push('\n');
+    let mut color_str = String::new();
+    if args.color {
+        let start_process_blocks_color = Instant::now();
+        for (idx, (letter, block)) in zip(final_str.chars(), blocks_color).enumerate() {
+            if block.len() >= 3 {
+                let chunks: Vec<_> = block.chunks(3).collect();
+                let mut averages = Vec::new();
+                for i in 0..chunks[0].len() {
+                    let sum: f32 = chunks.iter().map(|chunk| chunk[i] as f32).sum();
+                    averages.push(sum / chunks.len() as f32);
+                }
+                color_str += &letter.to_string().truecolor(averages[0] as u8, averages[1] as u8, averages[2] as u8).to_string();
+            } else {
+                color_str += &letter.to_string();
+            }
+            if idx > 0 && idx % chars_width as usize == 0 {
+                color_str.push('\n');
+            }
         }
-        formatted.push(c);
+        final_str = color_str;
+        debug!(
+            "Processed {} colored blocks in {}ms.",
+            blocks.len(),
+            start_process_blocks_color.elapsed().as_millis()
+        );
+    } else {
+        let mut formatted = String::new();
+        for (i, c) in final_str.chars().enumerate() {
+            if i > 0 && i % chars_width as usize == 0 {
+                formatted.push('\n');
+            }
+            formatted.push(c);
+        }
+        final_str = formatted;
     }
-    println!("{}", formatted);
+
+    println!("{}", final_str);
 }
 
 #[derive(Parser, Debug)]

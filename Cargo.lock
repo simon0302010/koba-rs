@@ -593,6 +593,7 @@ name = "koba-rs"
 version = "0.1.0"
 dependencies = [
  "clap",
+ "colored",
  "fontdue",
  "image",
  "log",
