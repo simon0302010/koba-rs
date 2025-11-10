@@ -3,13 +3,14 @@ use std::time::Instant;
 use std::{char, ops::RangeInclusive};
 
 use clap::Parser;
+use image::ImageBuffer;
 use log::*;
 use terminal_size::Width;
 
 mod core;
 use core::*;
 
-use crate::core::blocks::create_blocks_luma;
+use crate::core::blocks::{create_blocks_color, create_blocks_luma};
 
 const CHAR_ASPECT: f32 = 2.0;
 
@@ -62,6 +63,15 @@ fn main() {
         image_loading_start.elapsed().as_millis()
     );
 
+    let mut img_color: ImageBuffer<image::Rgb<u8>, Vec<u8>> = ImageBuffer::new(1, 1);
+    if args.color {
+        let start_convert_rgb = Instant::now();
+        img_color = img.clone().into_rgb8();
+        debug!(
+            "Converting image to rgb took {}ms.",
+            start_convert_rgb.elapsed().as_millis()
+        );
+    }
     let start_convert_luka = Instant::now();
     let img = img.into_luma8();
     debug!(
@@ -99,6 +109,16 @@ fn main() {
         blocks.len(),
         create_blocks_start.elapsed().as_millis()
     );
+    let mut blocks_color: Vec<Vec<u8>> = Vec::new();
+    if args.color {
+        let create_block_color_start = Instant::now();
+        blocks_color = create_blocks_color(&block_widths, &block_heights, &img_color);
+        debug!(
+            "Created {} color blocks in {}ms.",
+            blocks_color.len(),
+            create_block_color_start.elapsed().as_millis()
+        )
+    }
 
     let font = include_bytes!("../font/unifont.otf") as &[u8];
     let font = fontdue::Font::from_bytes(font, fontdue::FontSettings::default()).unwrap();
@@ -145,9 +165,9 @@ fn main() {
             (block.iter().map(|b| *b as u64).sum::<u64>() / block.len() as u64) as u8
         };
         if let Some(closest_char) = find_similar(avg, &char_infos) {
-            final_str += &closest_char.to_string();
+            final_str.push(closest_char);
         } else {
-            final_str += " ";
+            final_str.push(' ');
         }
     }
 
@@ -182,6 +202,9 @@ struct Args {
     /// prints debug messages
     #[arg(long, default_value_t = false)]
     debug: bool,
+    /// prints the image in color using ansi escape codes
+    #[arg(long, default_value_t = false)]
+    color: bool
 }
 
 fn parse_char_range(char_range: String) -> Result<RangeInclusive<u32>, String> {
