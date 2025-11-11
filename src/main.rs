@@ -1,7 +1,9 @@
 use std::iter::zip;
 use std::path::Path;
 use std::time::Instant;
-use std::{char, ops::RangeInclusive};
+use std::char;
+use std::ops::RangeInclusive;
+use std::fs;
 
 use clap::Parser;
 use image::ImageBuffer;
@@ -122,8 +124,23 @@ fn main() {
         )
     }
 
-    let font = include_bytes!("../font/unifont.otf") as &[u8];
-    let font = fontdue::Font::from_bytes(font, fontdue::FontSettings::default()).unwrap();
+    let font_bytes: Vec<u8>;
+    let font_slice: &[u8] = if !args.font.is_empty() {
+        match fs::read(&args.font) {
+            Ok(f) => {
+                font_bytes = f;
+                &font_bytes
+            },
+            Err(e) => {
+                error!("Failed to load font from {}: {}", args.font, e);
+                std::process::exit(1)
+            }
+        }
+    } else {
+        include_bytes!("../font/unifont.otf") as &[u8]
+    };
+
+    let font = fontdue::Font::from_bytes(font_slice, fontdue::FontSettings::default()).unwrap();
 
     let mut char_infos: Vec<CharInfo> = Vec::new();
     let char_render_start = Instant::now();
@@ -235,7 +252,10 @@ struct Args {
     debug: bool,
     /// prints the image in color using ansi escape codes
     #[arg(long, default_value_t = false)]
-    color: bool
+    color: bool,
+    /// lets the user provide a custom opentype or truetype font for processing
+    #[arg(long, hide_default_value = true, default_value = "")]
+    font: String,
 }
 
 fn parse_char_range(char_range: String) -> Result<RangeInclusive<u32>, String> {
