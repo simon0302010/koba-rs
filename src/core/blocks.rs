@@ -1,3 +1,5 @@
+//  Copyright (C) 2025 simon0302010
+
 use std::cmp;
 
 use image::{GenericImageView, ImageBuffer, Luma};
