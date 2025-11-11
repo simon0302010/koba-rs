@@ -1,7 +1,7 @@
 [package]
 name = "koba-rs"
 description = "Rust rewrite of https://github.com/simon0302010/koba, a terminal image renderer."
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 repository = "https://github.com/simon0302010/koba-rs"
 readme = "README.md"
