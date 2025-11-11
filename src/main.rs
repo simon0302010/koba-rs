@@ -6,7 +6,7 @@ use std::ops::RangeInclusive;
 use std::fs;
 
 use clap::Parser;
-use image::ImageBuffer;
+use image::{ImageBuffer, imageops::invert};
 use log::*;
 use terminal_size::Width;
 use colored::Colorize;
@@ -67,6 +67,7 @@ fn main() {
         image_loading_start.elapsed().as_millis()
     );
 
+    // create rgb copy of image
     let mut img_color: ImageBuffer<image::Rgb<u8>, Vec<u8>> = ImageBuffer::new(1, 1);
     if args.color {
         let start_convert_rgb = Instant::now();
@@ -76,12 +77,24 @@ fn main() {
             start_convert_rgb.elapsed().as_millis()
         );
     }
+
+    // convert image to grayscale
     let start_convert_luka = Instant::now();
-    let img = img.into_luma8();
+    let mut img = img.into_luma8();
     debug!(
         "Converting image to grayscale took {}ms.",
         start_convert_luka.elapsed().as_millis()
     );
+
+    // inversion of image
+    if args.invert {
+        let image_invert_start = Instant::now();
+        invert(&mut img);
+        debug!(
+            "Inverted image in {}µs.",
+            image_invert_start.elapsed().as_micros()
+        );
+    }
 
     debug!("Image dimensions: {:?}", img.dimensions());
     let (img_width, img_height) = img.dimensions();
@@ -256,6 +269,12 @@ struct Args {
     /// lets the user provide a custom opentype or truetype font for processing
     #[arg(long, hide_default_value = true, default_value = "")]
     font: String,
+    /// inverts image for processing (color will not be inverted when using --color)
+    #[arg(long, default_value_t = false)]
+    invert: bool,
+    /// stretches the contrast of the image to potentially improve results
+    #[arg(long, default_value_t = false)]
+    stretch_contrast: bool,
 }
 
 fn parse_char_range(char_range: String) -> Result<RangeInclusive<u32>, String> {
