@@ -14,18 +14,21 @@
 //  You should have received a copy of the GNU General Public License
 //  along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-use std::iter::zip;
+use std::char;
+use std::fs;
+use std::io::BufReader;
+use std::ops::RangeInclusive;
 use std::path::Path;
 use std::time::Instant;
-use std::char;
-use std::ops::RangeInclusive;
-use std::fs;
+use std::{fs::File, iter::zip};
 
 use clap::Parser;
-use image::{ImageBuffer, imageops::invert};
+use colored::Colorize;
+use image::AnimationDecoder;
+use image::codecs::gif::GifDecoder;
+use image::{DynamicImage, ImageBuffer, imageops::invert};
 use log::*;
 use terminal_size::Width;
-use colored::Colorize;
 
 mod core;
 use core::*;
@@ -52,9 +55,8 @@ fn main() {
         match simple_logger::init_with_level(log::Level::Info) {
             Ok(_) => debug!("Logger initialized."),
             Err(e) => println!("WARNING: Failed to initialize logger: {}", e),
+        }
     }
-    }
-
 
     let char_range = match parse_char_range(args.char_range) {
         Ok(char_range) => char_range,
@@ -71,8 +73,17 @@ fn main() {
     }
 
     let image_loading_start = Instant::now();
-    let img = match image::open(img_path) {
-        Ok(img) => img,
+    let img = match load_frames(img_path) {
+        Ok(mut imgs) => {
+            debug!("Image has {} frame(s).", imgs.len());
+            match imgs.pop() {
+                Some(img) => img,
+                None => {
+                    error!("No frames found in image.");
+                    std::process::exit(1);
+                }
+            }
+        }
         Err(e) => {
             error!("Failed to load image: {}", e);
             std::process::exit(1);
@@ -159,7 +170,7 @@ fn main() {
             Ok(f) => {
                 font_bytes = f;
                 &font_bytes
-            },
+            }
             Err(e) => {
                 error!("Failed to load font from {}: {}", args.font, e);
                 std::process::exit(1)
@@ -236,11 +247,14 @@ fn main() {
                     let sum: f32 = chunks.iter().map(|chunk| chunk[i] as f32).sum();
                     averages.push(sum / chunks.len() as f32);
                 }
-                color_str += &letter.to_string().truecolor(averages[0] as u8, averages[1] as u8, averages[2] as u8).to_string();
+                color_str += &letter
+                    .to_string()
+                    .truecolor(averages[0] as u8, averages[1] as u8, averages[2] as u8)
+                    .to_string();
             } else {
                 color_str += &letter.to_string();
             }
-            if idx > 0 && idx % chars_width as usize == 0 {
+            if (idx + 1) % chars_width as usize == 0 && idx + 1 < final_str.len() {
                 color_str.push('\n');
             }
         }
@@ -253,14 +267,13 @@ fn main() {
     } else {
         let mut formatted = String::new();
         for (i, c) in final_str.chars().enumerate() {
-            if i > 0 && i % chars_width as usize == 0 {
+            formatted.push(c);
+            if (i + 1) % chars_width as usize == 0 && i + 1 < final_str.len() {
                 formatted.push('\n');
             }
-            formatted.push(c);
         }
         final_str = formatted;
     }
-
     println!("{}", final_str);
 }
 
@@ -338,4 +351,25 @@ fn find_similar(target: u8, arr: &[CharInfo]) -> Option<char> {
     arr.iter()
         .min_by_key(|x| x.brightness.abs_diff(target))
         .map(|x| x.char)
+}
+
+fn load_frames(path: &Path) -> Result<Vec<DynamicImage>, Box<dyn std::error::Error>> {
+    let path = path.to_str().ok_or("Invalid path")?;
+    let file = File::open(path)?;
+    let reader = BufReader::new(file);
+
+    match GifDecoder::new(reader) {
+        Ok(decoder) => {
+            let frames = decoder.into_frames().collect_frames()?;
+            let dynamic_frames: Vec<DynamicImage> = frames
+                .into_iter()
+                .map(|frame| DynamicImage::ImageRgba8(frame.buffer().clone()))
+                .collect();
+            Ok(dynamic_frames)
+        }
+        Err(_) => match image::open(path) {
+            Ok(img) => Ok(vec![img]),
+            Err(e) => Err(Box::new(e)),
+        },
+    }
 }
