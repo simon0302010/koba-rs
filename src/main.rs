@@ -26,7 +26,7 @@ use clap::Parser;
 use colored::Colorize;
 use image::AnimationDecoder;
 use image::codecs::gif::GifDecoder;
-use image::{DynamicImage, ImageBuffer, imageops::invert};
+use image::{DynamicImage, ImageBuffer, imageops::invert, GenericImageView};
 use log::*;
 use terminal_size::Width;
 
@@ -73,58 +73,63 @@ fn main() {
     }
 
     let image_loading_start = Instant::now();
-    let img = match load_frames(img_path) {
-        Ok(mut imgs) => {
-            debug!("Image has {} frame(s).", imgs.len());
-            match imgs.pop() {
-                Some(img) => img,
-                None => {
-                    error!("No frames found in image.");
-                    std::process::exit(1);
-                }
-            }
-        }
+    let frames = match load_frames(img_path) {
+        Ok(imgs) => imgs,
         Err(e) => {
             error!("Failed to load image: {}", e);
             std::process::exit(1);
         }
     };
     debug!(
-        "Loading image took {}ms",
+        "Image has {} frames",
+        frames.len()
+    );
+    debug!(
+        "Loading frame(s) took {}ms",
         image_loading_start.elapsed().as_millis()
     );
 
     // create rgb copy of image
-    let mut img_color: ImageBuffer<image::Rgb<u8>, Vec<u8>> = ImageBuffer::new(1, 1);
+    let mut frames_color: Vec<ImageBuffer<image::Rgb<u8>, Vec<u8>>> = vec![ImageBuffer::new(1, 1)];
     if args.color {
         let start_convert_rgb = Instant::now();
-        img_color = img.clone().into_rgb8();
+        frames_color = frames.clone().iter().map(|f| f.to_rgb8()).collect();
         debug!(
-            "Converting image to rgb took {}ms.",
+            "Converting frame(s) to rgb took {}ms.",
             start_convert_rgb.elapsed().as_millis()
         );
     }
 
     // convert image to grayscale
     let start_convert_luka = Instant::now();
-    let mut img = img.into_luma8();
+    let mut frames: Vec<image::ImageBuffer<image::Luma<u8>, Vec<u8>>> = frames
+        .into_iter()
+        .map(|f| f.into_luma8())
+        .collect();
     debug!(
-        "Converting image to grayscale took {}ms.",
+        "Converting frame(s) to grayscale took {}ms.",
         start_convert_luka.elapsed().as_millis()
     );
 
     // inversion of image
     if args.invert {
         let image_invert_start = Instant::now();
-        invert(&mut img);
+        for frame in &mut frames {
+            invert(frame);
+        }
         debug!(
-            "Inverted image in {}µs.",
+            "Inverted frame(s) in {}µs.",
             image_invert_start.elapsed().as_micros()
         );
     }
 
-    debug!("Image dimensions: {:?}", img.dimensions());
-    let (img_width, img_height) = img.dimensions();
+    if let Some((img_width, img_height)) = frames.first().map(|img| img.dimensions()) {
+        debug!("Image dimensions: ({}, {})", img_width, img_height);
+    } else {
+        error!("No frames loaded.");
+        std::process::exit(1);
+    }
+    let (img_width, img_height) = frames.first().map(|img| img.dimensions()).unwrap();
     debug!("Char Range: {}-{}", *char_range.start(), *char_range.end());
 
     let terminal_width = match terminal_size::terminal_size() {
@@ -145,25 +150,6 @@ fn main() {
         CHAR_ASPECT,
     );
 
-    // i spent a lot of time on a version that was only 100ms faster than the current one but scrapped it.
-    let create_blocks_start = Instant::now();
-    let blocks = create_blocks_luma(&block_widths, &block_heights, &img);
-    debug!(
-        "Created {} blocks in {}ms.",
-        blocks.len(),
-        create_blocks_start.elapsed().as_millis()
-    );
-    let mut blocks_color: Vec<Vec<u8>> = Vec::new();
-    if args.color {
-        let create_block_color_start = Instant::now();
-        blocks_color = create_blocks_color(&block_widths, &block_heights, &img_color);
-        debug!(
-            "Created {} color blocks in {}ms.",
-            blocks_color.len(),
-            create_block_color_start.elapsed().as_millis()
-        )
-    }
-
     let font_bytes: Vec<u8>;
     let font_slice: &[u8] = if !args.font.is_empty() {
         match fs::read(&args.font) {
@@ -182,99 +168,121 @@ fn main() {
 
     let font = fontdue::Font::from_bytes(font_slice, fontdue::FontSettings::default()).unwrap();
 
-    let mut char_infos: Vec<CharInfo> = Vec::new();
-    let char_render_start = Instant::now();
-    for character in char_range {
-        let charac = match std::char::from_u32(character) {
-            Some(c) => {
-                if !c.is_control() {
-                    c
-                } else {
+    for (frame, frame_color) in frames.into_iter().zip(frames_color) {
+        // processing start
+        // i spent a lot of time on a version that was only 100ms faster than the current one but scrapped it.
+        let create_blocks_start = Instant::now();
+        let blocks = create_blocks_luma(&block_widths, &block_heights, &frame);
+        debug!(
+            "Created {} blocks in {}ms.",
+            blocks.len(),
+            create_blocks_start.elapsed().as_millis()
+        );
+        let mut blocks_color: Vec<Vec<u8>> = Vec::new();
+        if args.color {
+            let create_block_color_start = Instant::now();
+            blocks_color = create_blocks_color(&block_widths, &block_heights, &frame_color);
+            debug!(
+                "Created {} color blocks in {}ms.",
+                blocks_color.len(),
+                create_block_color_start.elapsed().as_millis()
+            )
+        }
+
+        let mut char_infos: Vec<CharInfo> = Vec::new();
+        let char_render_start = Instant::now();
+        for character in char_range.clone() {
+            let charac = match std::char::from_u32(character) {
+                Some(c) => {
+                    if !c.is_control() {
+                        c
+                    } else {
+                        continue;
+                    }
+                }
+                None => {
                     continue;
                 }
-            }
-            None => {
+            };
+
+            let (_metrics, bitmap) = font.rasterize(charac, 17.0);
+            let bitmap = bitmap.iter().map(|f| *f as u64);
+            if bitmap.len() < 1 {
                 continue;
             }
-        };
-
-        let (_metrics, bitmap) = font.rasterize(charac, 17.0);
-        let bitmap = bitmap.iter().map(|f| *f as u64);
-        if bitmap.len() < 1 {
-            continue;
+            char_infos.push(CharInfo {
+                char: charac,
+                brightness: (bitmap.clone().sum::<u64>() / bitmap.len() as u64) as u8,
+            });
         }
-        char_infos.push(CharInfo {
-            char: charac,
-            brightness: (bitmap.clone().sum::<u64>() / bitmap.len() as u64) as u8,
-        });
-    }
 
-    debug!(
-        "Rendered {} characters in {}µs.",
-        char_infos.len(),
-        char_render_start.elapsed().as_micros()
-    );
-
-    let start_process_blocks = Instant::now();
-    let mut final_str: String = String::new();
-    for block in &blocks {
-        let avg = if block.is_empty() {
-            0
-        } else {
-            (block.iter().map(|b| *b as u64).sum::<u64>() / block.len() as u64) as u8
-        };
-        if let Some(closest_char) = find_similar(avg, &char_infos) {
-            final_str.push(closest_char);
-        } else {
-            final_str.push(' ');
-        }
-    }
-
-    debug!(
-        "Processed {} blocks in {}ms.",
-        blocks.len(),
-        start_process_blocks.elapsed().as_millis()
-    );
-
-    let mut color_str = String::new();
-    if args.color {
-        let start_process_blocks_color = Instant::now();
-        for (idx, (letter, block)) in zip(final_str.chars(), blocks_color).enumerate() {
-            if block.len() >= 3 {
-                let chunks: Vec<_> = block.chunks(3).collect();
-                let mut averages = Vec::new();
-                for i in 0..chunks[0].len() {
-                    let sum: f32 = chunks.iter().map(|chunk| chunk[i] as f32).sum();
-                    averages.push(sum / chunks.len() as f32);
-                }
-                color_str += &letter
-                    .to_string()
-                    .truecolor(averages[0] as u8, averages[1] as u8, averages[2] as u8)
-                    .to_string();
-            } else {
-                color_str += &letter.to_string();
-            }
-            if (idx + 1) % chars_width as usize == 0 && idx + 1 < final_str.len() {
-                color_str.push('\n');
-            }
-        }
-        final_str = color_str;
         debug!(
-            "Processed {} colored blocks in {}ms.",
-            blocks.len(),
-            start_process_blocks_color.elapsed().as_millis()
+            "Rendered {} characters in {}µs.",
+            char_infos.len(),
+            char_render_start.elapsed().as_micros()
         );
-    } else {
-        let mut formatted = String::new();
-        for (i, c) in final_str.chars().enumerate() {
-            formatted.push(c);
-            if (i + 1) % chars_width as usize == 0 && i + 1 < final_str.len() {
-                formatted.push('\n');
+
+        let start_process_blocks = Instant::now();
+        let mut final_str: String = String::new();
+        for block in &blocks {
+            let avg = if block.is_empty() {
+                0
+            } else {
+                (block.iter().map(|b| *b as u64).sum::<u64>() / block.len() as u64) as u8
+            };
+            if let Some(closest_char) = find_similar(avg, &char_infos) {
+                final_str.push(closest_char);
+            } else {
+                final_str.push(' ');
             }
         }
-        final_str = formatted;
+
+        debug!(
+            "Processed {} blocks in {}ms.",
+            blocks.len(),
+            start_process_blocks.elapsed().as_millis()
+        );
+
+        let mut color_str = String::new();
+        if args.color {
+            let start_process_blocks_color = Instant::now();
+            for (idx, (letter, block)) in zip(final_str.chars(), blocks_color).enumerate() {
+                if block.len() >= 3 {
+                    let chunks: Vec<_> = block.chunks(3).collect();
+                    let mut averages = Vec::new();
+                    for i in 0..chunks[0].len() {
+                        let sum: f32 = chunks.iter().map(|chunk| chunk[i] as f32).sum();
+                        averages.push(sum / chunks.len() as f32);
+                    }
+                    color_str += &letter
+                        .to_string()
+                        .truecolor(averages[0] as u8, averages[1] as u8, averages[2] as u8)
+                        .to_string();
+                } else {
+                    color_str += &letter.to_string();
+                }
+                if (idx + 1) % chars_width as usize == 0 && idx + 1 < final_str.len() {
+                    color_str.push('\n');
+                }
+            }
+            final_str = color_str;
+            debug!(
+                "Processed {} colored blocks in {}ms.",
+                blocks.len(),
+                start_process_blocks_color.elapsed().as_millis()
+            );
+        } else {
+            let mut formatted = String::new();
+            for (i, c) in final_str.chars().enumerate() {
+                formatted.push(c);
+                if (i + 1) % chars_width as usize == 0 && i + 1 < final_str.len() {
+                    formatted.push('\n');
+                }
+            }
+            final_str = formatted;
+        }
+        println!("{}", final_str);
     }
-    println!("{}", final_str);
 }
 
 #[derive(Parser, Debug)]
