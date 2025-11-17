@@ -19,14 +19,17 @@ use std::fs;
 use std::io::BufReader;
 use std::ops::RangeInclusive;
 use std::path::Path;
+use std::thread::sleep;
+use std::time::Duration;
 use std::time::Instant;
+use std::vec;
 use std::{fs::File, iter::zip};
 
 use clap::Parser;
 use colored::Colorize;
 use image::AnimationDecoder;
 use image::codecs::gif::GifDecoder;
-use image::{DynamicImage, ImageBuffer, imageops::invert, GenericImageView};
+use image::{DynamicImage, ImageBuffer, imageops::invert};
 use log::*;
 use terminal_size::Width;
 
@@ -73,7 +76,7 @@ fn main() {
     }
 
     let image_loading_start = Instant::now();
-    let frames = match load_frames(img_path) {
+    let (frames, durations) = match load_frames(img_path) {
         Ok(imgs) => imgs,
         Err(e) => {
             error!("Failed to load image: {}", e);
@@ -168,6 +171,7 @@ fn main() {
 
     let font = fontdue::Font::from_bytes(font_slice, fontdue::FontSettings::default()).unwrap();
 
+    let mut final_frames: Vec<String> = vec![];
     for (frame, frame_color) in frames.into_iter().zip(frames_color) {
         // processing start
         // i spent a lot of time on a version that was only 100ms faster than the current one but scrapped it.
@@ -281,7 +285,23 @@ fn main() {
             }
             final_str = formatted;
         }
-        println!("{}", final_str);
+        
+        final_frames.push(final_str);
+    }
+
+    if final_frames.len() <= 1 {
+        if let Some(frame) = final_frames.first() {
+            println!("{}", frame);
+        }
+    } else {
+        loop {
+            for (frame, duration) in final_frames.iter().zip(&durations) {
+                print!("\x1B[2J\x1B[H");
+                println!("{}", frame);
+                std::io::Write::flush(&mut std::io::stdout()).unwrap();
+                sleep(*duration);
+            }
+        }
     }
 }
 
@@ -361,7 +381,7 @@ fn find_similar(target: u8, arr: &[CharInfo]) -> Option<char> {
         .map(|x| x.char)
 }
 
-fn load_frames(path: &Path) -> Result<Vec<DynamicImage>, Box<dyn std::error::Error>> {
+fn load_frames(path: &Path) -> Result<(Vec<DynamicImage>, Vec<Duration>), Box<dyn std::error::Error>> {
     let path = path.to_str().ok_or("Invalid path")?;
     let file = File::open(path)?;
     let reader = BufReader::new(file);
@@ -369,14 +389,18 @@ fn load_frames(path: &Path) -> Result<Vec<DynamicImage>, Box<dyn std::error::Err
     match GifDecoder::new(reader) {
         Ok(decoder) => {
             let frames = decoder.into_frames().collect_frames()?;
-            let dynamic_frames: Vec<DynamicImage> = frames
+            let dynamic_frames: Vec<(DynamicImage, Duration)> = frames
                 .into_iter()
-                .map(|frame| DynamicImage::ImageRgba8(frame.buffer().clone()))
+                .map(|frame| {
+                    let delay = Duration::from_millis(frame.delay().numer_denom_ms().0 as u64);
+                    (DynamicImage::ImageRgba8(frame.buffer().clone()), delay)
+                })
                 .collect();
-            Ok(dynamic_frames)
+            let (images, durations): (Vec<_>, Vec<_>) = dynamic_frames.into_iter().unzip();
+            Ok((images, durations))
         }
         Err(_) => match image::open(path) {
-            Ok(img) => Ok(vec![img]),
+            Ok(img) => Ok((vec![img], vec![Duration::from_millis(0)])),
             Err(e) => Err(Box::new(e)),
         },
     }
