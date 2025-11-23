@@ -16,12 +16,12 @@
 
 use std::char;
 use std::fs;
-use std::io::BufReader;
+use std::io::BufWriter;
+use std::io::{self, BufReader, Write};
 use std::ops::RangeInclusive;
 use std::path::Path;
 use std::thread::sleep;
-use std::time::Duration;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 use std::vec;
 use std::{fs::File, iter::zip};
 
@@ -92,7 +92,7 @@ fn main() {
     // create rgb copy of image
     let mut frames_color: Vec<ImageBuffer<image::Rgb<u8>, Vec<u8>>> =
         vec![ImageBuffer::new(1, 1); frames.len()];
-    if args.color {
+    if !args.no_color {
         let start_convert_rgb = Instant::now();
         frames_color = frames.clone().iter().map(|f| f.to_rgb8()).collect();
         debug!(
@@ -111,7 +111,7 @@ fn main() {
     );
 
     // inversion of image
-    if args.invert {
+    if !args.no_invert {
         let image_invert_start = Instant::now();
         for frame in &mut frames {
             invert(frame);
@@ -180,7 +180,7 @@ fn main() {
             create_blocks_start.elapsed().as_millis()
         );
         let mut blocks_color: Vec<Vec<u8>> = Vec::new();
-        if args.color {
+        if !args.no_color {
             let create_block_color_start = Instant::now();
             blocks_color = create_blocks_color(&block_widths, &block_heights, &frame_color);
             debug!(
@@ -245,7 +245,7 @@ fn main() {
         );
 
         let mut color_str = String::new();
-        if args.color {
+        if !args.no_color {
             let start_process_blocks_color = Instant::now();
             for (idx, (letter, block)) in zip(final_str.chars(), blocks_color).enumerate() {
                 if block.len() >= 3 {
@@ -291,12 +291,21 @@ fn main() {
             println!("{}", frame);
         }
     } else {
+        let stdout = io::stdout();
+        let mut handle = BufWriter::with_capacity(65536, stdout.lock());
+
+        let sync_start = "\x1B[?2026h";
+        let sync_end = "\x1B[?2026l";
+
         loop {
-            for (frame, duration) in final_frames.iter().zip(&durations) {
-                print!("\x1B[2J\x1B[H");
-                println!("{}", frame);
-                std::io::Write::flush(&mut std::io::stdout()).unwrap();
-                sleep(*duration);
+            for (frame, target_duration) in final_frames.iter().zip(&durations) {
+                let start = Instant::now();
+                write!(handle, "{}\x1B[1;1H{}{}", sync_start, frame, sync_end).unwrap();
+                handle.flush().unwrap();
+                let elapsed = start.elapsed();
+                if *target_duration > elapsed {
+                    sleep(*target_duration - elapsed);
+                }
             }
         }
     }
@@ -325,15 +334,15 @@ struct Args {
     /// prints debug messages
     #[arg(long, default_value_t = false)]
     debug: bool,
-    /// prints the image in color using ansi escape codes
+    /// prints the image in grayscale
     #[arg(long, default_value_t = false)]
-    color: bool,
+    no_color: bool,
     /// lets the user provide a custom opentype or truetype font for processing
     #[arg(long, hide_default_value = true, default_value = "")]
     font: String,
-    /// inverts image for processing (color will not be inverted when using --color)
+    /// does not invert image for processing (has no effect on displayed color)
     #[arg(long, default_value_t = false)]
-    invert: bool,
+    no_invert: bool,
     /// sets the minimum block size. can improve image quality under certain conditions.
     #[arg(long, default_value_t = 2.5)]
     min_size: f32,
