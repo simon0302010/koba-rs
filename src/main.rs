@@ -83,17 +83,15 @@ fn main() {
             std::process::exit(1);
         }
     };
-    debug!(
-        "Image has {} frames",
-        frames.len()
-    );
+    debug!("Image has {} frames", frames.len());
     debug!(
         "Loading frame(s) took {}ms",
         image_loading_start.elapsed().as_millis()
     );
 
     // create rgb copy of image
-    let mut frames_color: Vec<ImageBuffer<image::Rgb<u8>, Vec<u8>>> = vec![ImageBuffer::new(1, 1)];
+    let mut frames_color: Vec<ImageBuffer<image::Rgb<u8>, Vec<u8>>> =
+        vec![ImageBuffer::new(1, 1); frames.len()];
     if args.color {
         let start_convert_rgb = Instant::now();
         frames_color = frames.clone().iter().map(|f| f.to_rgb8()).collect();
@@ -105,10 +103,8 @@ fn main() {
 
     // convert image to grayscale
     let start_convert_luka = Instant::now();
-    let mut frames: Vec<image::ImageBuffer<image::Luma<u8>, Vec<u8>>> = frames
-        .into_iter()
-        .map(|f| f.into_luma8())
-        .collect();
+    let mut frames: Vec<image::ImageBuffer<image::Luma<u8>, Vec<u8>>> =
+        frames.into_iter().map(|f| f.into_luma8()).collect();
     debug!(
         "Converting frame(s) to grayscale took {}ms.",
         start_convert_luka.elapsed().as_millis()
@@ -151,6 +147,7 @@ fn main() {
         args.scale,
         terminal_width,
         CHAR_ASPECT,
+        args.min_size,
     );
 
     let font_bytes: Vec<u8>;
@@ -285,7 +282,7 @@ fn main() {
             }
             final_str = formatted;
         }
-        
+
         final_frames.push(final_str);
     }
 
@@ -337,9 +334,9 @@ struct Args {
     /// inverts image for processing (color will not be inverted when using --color)
     #[arg(long, default_value_t = false)]
     invert: bool,
-    /// stretches the contrast of the image to potentially improve results
-    #[arg(long, default_value_t = false)]
-    stretch_contrast: bool,
+    /// sets the minimum block size. can improve image quality under certain conditions.
+    #[arg(long, default_value_t = 2.5)]
+    min_size: f32,
 }
 
 fn parse_char_range(char_range: String) -> Result<RangeInclusive<u32>, String> {
@@ -381,7 +378,9 @@ fn find_similar(target: u8, arr: &[CharInfo]) -> Option<char> {
         .map(|x| x.char)
 }
 
-fn load_frames(path: &Path) -> Result<(Vec<DynamicImage>, Vec<Duration>), Box<dyn std::error::Error>> {
+fn load_frames(
+    path: &Path,
+) -> Result<(Vec<DynamicImage>, Vec<Duration>), Box<dyn std::error::Error>> {
     let path = path.to_str().ok_or("Invalid path")?;
     let file = File::open(path)?;
     let reader = BufReader::new(file);

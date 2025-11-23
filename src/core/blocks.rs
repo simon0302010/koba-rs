@@ -10,9 +10,10 @@ pub fn calculate_block_sizes(
     scale: f64,
     terminal_width: u16,
     char_aspect: f32,
+    min_size: f32,
 ) -> (Vec<u16>, Vec<u16>, u16) {
-    let min_block_width = 10.0 / char_aspect;
-    let min_block_height = 10.0;
+    let min_block_width = min_size / char_aspect;
+    let min_block_height = min_size;
 
     let scale = scale.min(1.0);
 
