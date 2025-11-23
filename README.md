@@ -38,7 +38,7 @@ koba-rs image.png
 | `IMAGE_PATH` | Path to input image (PNG, JPG, GIF) | Required |
 | `-c, --char-range` | Unicode character range (e.g., 32-126) | 32-126 |
 | `-s, --scale` | Scale factor for output | 1.0 |
-| `--font` | Path to custom OpenType or TrueType font | System font |
+| `--font` | Path to custom OpenType or TrueType font | Unifont |
 | `--no-color` | Render in grayscale | false |
 | `--no-invert` | Don't invert image for processing | false |
 | `--min-size` | Minimum block size for processing | 2.5 |
