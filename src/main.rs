@@ -32,6 +32,7 @@ use image::codecs::gif::GifDecoder;
 use image::{DynamicImage, ImageBuffer, imageops::invert};
 use log::*;
 use terminal_size::Width;
+use indicatif::ProgressBar;
 
 mod core;
 use core::*;
@@ -168,6 +169,7 @@ fn main() {
 
     let font = fontdue::Font::from_bytes(font_slice, fontdue::FontSettings::default()).unwrap();
 
+    let bar = ProgressBar::new(frames.len() as u64);
     let mut final_frames: Vec<String> = vec![];
     for (frame, frame_color) in frames.into_iter().zip(frames_color) {
         // processing start
@@ -284,7 +286,9 @@ fn main() {
         }
 
         final_frames.push(final_str);
+        bar.inc(1);
     }
+    bar.finish_and_clear();
 
     if final_frames.len() <= 1 {
         if let Some(frame) = final_frames.first() {
@@ -297,6 +301,7 @@ fn main() {
         let sync_start = "\x1B[?2026h";
         let sync_end = "\x1B[?2026l";
 
+        write!(handle, "\x1B[2J").unwrap();
         loop {
             for (frame, target_duration) in final_frames.iter().zip(&durations) {
                 let start = Instant::now();
